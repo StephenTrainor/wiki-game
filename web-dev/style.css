@@ -4,3 +4,9 @@ body {
     background: #FAFAFA;
     font-family: Helvetica;
 }
+
+.b {
+    border-radius: 10px;
+    border: 10px solid thin;
+    border-color: yellow;
+}
