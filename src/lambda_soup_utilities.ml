@@ -59,19 +59,85 @@ let%expect_test "get_list_items" =
     |}]
 ;;
 
+let extract_string_from_first_li_from_node node : string =
+  let open Soup in
+  let li_elements = select "li" node in
+  let first_li_element = to_list li_elements |> List.hd_exn in
+  texts first_li_element |> String.concat ~sep:"" |> String.strip
+;;
+
 (* Gets the first item of all unordered lists contained in an HTML page. *)
 let get_first_item_of_all_unordered_lists contents : string list =
   let open Soup in
   parse contents
   $$ "ul"
   |> to_list
-  |> List.map ~f:(fun ul ->
-    select "li" ul
-    |> to_list
-    |> List.hd_exn
-    |> texts
-    |> String.concat ~sep:""
-    |> String.strip)
+  |> List.map ~f:extract_string_from_first_li_from_node
+;;
+
+let%expect_test "get_first_item_of_all_unordered_lists" =
+  let contents =
+    {|<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Carnivore - Wikipedia</title>
+</head>
+
+<body>
+  <p>A <b>carnivore</b> is an <a href="/wiki/Animal">animal</a> which eats
+    only meat. <b>Predators</b> commonly hunt and kill their own
+    prey. <b>Scavengers</b> are carnivores which eat animals they did not
+    kill themselves. Carnivores which eat mainly or only insects are
+    called <b>insectivores</b>. Carnivores which eat mainly or only fish
+    are called <b>piscivores</b>.</p>
+
+  <h2>List of living carnivores</h2>
+
+  <h3>Mammals</h3>
+  <ul>
+    <li>
+      All <a href="/wiki/Feliformia">feliforms</a>, such as domestic cats, big cats, hyenas, mongooses, civets
+    </li>
+    <li>
+      Almost all <a href="/wiki/Caniformia">caniforms</a>, such as the dogs, wolves, foxes, ferrets, seals and walruses
+    </li>
+    <li>
+      All cetaceans, such as dolphins, whales and porpoises
+    </li>
+    <li>
+      All bats except fruitbats
+    </li>
+    <li>
+      The carnivorous marsupials, such as the Tasmania devil
+    </li>
+  </ul>
+
+  <h3>Birds</h3>
+  <ul>
+    <li>
+      All birds of prey, such as hawks, eagles, falcons and owls
+    </li>
+    <li>
+      All vultures, both old world and new
+    </li>
+    <li>
+      Most waterfowl, such as gulls, penguins, pelicans, storks, and herons
+    </li>
+  </ul>
+  <p><a href="/wiki/Talk:Carnivore">Talk</a></p>
+</body>
+
+</html>
+|}
+  in
+  List.iter (get_first_item_of_all_unordered_lists contents) ~f:(fun s ->
+    print_endline s);
+  [%expect
+    {|
+All feliforms, such as domestic cats, big cats, hyenas, mongooses, civets
+All birds of prey, such as hawks, eagles, falcons and owls |}]
 ;;
 
 (* Gets the first item of the second unordered list in an HTML page. *)
@@ -82,12 +148,68 @@ let get_first_item_of_second_unordered_list contents : string =
   $$ "ul"
   |> to_list
   |> second_of_list
-  |> select "li"
-  |> to_list
-  |> List.hd_exn
-  |> texts
-  |> String.concat ~sep:""
-  |> String.strip
+  |> extract_string_from_first_li_from_node
+;;
+
+let%expect_test "get_first_item_of_second_unordered_list" =
+  let contents =
+    {|<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Carnivore - Wikipedia</title>
+</head>
+
+<body>
+  <p>A <b>carnivore</b> is an <a href="/wiki/Animal">animal</a> which eats
+    only meat. <b>Predators</b> commonly hunt and kill their own
+    prey. <b>Scavengers</b> are carnivores which eat animals they did not
+    kill themselves. Carnivores which eat mainly or only insects are
+    called <b>insectivores</b>. Carnivores which eat mainly or only fish
+    are called <b>piscivores</b>.</p>
+
+  <h2>List of living carnivores</h2>
+
+  <h3>Mammals</h3>
+  <ul>
+    <li>
+      All <a href="/wiki/Feliformia">feliforms</a>, such as domestic cats, big cats, hyenas, mongooses, civets
+    </li>
+    <li>
+      Almost all <a href="/wiki/Caniformia">caniforms</a>, such as the dogs, wolves, foxes, ferrets, seals and walruses
+    </li>
+    <li>
+      All cetaceans, such as dolphins, whales and porpoises
+    </li>
+    <li>
+      All bats except fruitbats
+    </li>
+    <li>
+      The carnivorous marsupials, such as the Tasmania devil
+    </li>
+  </ul>
+
+  <h3>Birds</h3>
+  <ul>
+    <li>
+      All birds of prey, such as hawks, eagles, falcons and owls
+    </li>
+    <li>
+      All vultures, both old world and new
+    </li>
+    <li>
+      Most waterfowl, such as gulls, penguins, pelicans, storks, and herons
+    </li>
+  </ul>
+  <p><a href="/wiki/Talk:Carnivore">Talk</a></p>
+</body>
+
+</html>
+|}
+  in
+  print_endline (get_first_item_of_second_unordered_list contents);
+  [%expect {| All birds of prey, such as hawks, eagles, falcons and owls |}]
 ;;
 
 (* Gets all bolded text from an HTML page. *)
@@ -98,6 +220,73 @@ let get_bolded_text contents : string list =
   |> to_list
   |> List.map ~f:(fun b_tag ->
     texts b_tag |> String.concat ~sep:"" |> String.strip)
+;;
+
+let%expect_test "get_bolded_text" =
+  let contents =
+    {|<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Carnivore - Wikipedia</title>
+</head>
+
+<body>
+  <p>A <b>carnivore</b> is an <a href="/wiki/Animal">animal</a> which eats
+    only meat. <b>Predators</b> commonly hunt and kill their own
+    prey. <b>Scavengers</b> are carnivores which eat animals they did not
+    kill themselves. Carnivores which eat mainly or only insects are
+    called <b>insectivores</b>. Carnivores which eat mainly or only fish
+    are called <b>piscivores</b>.</p>
+
+  <h2>List of living carnivores</h2>
+
+  <h3>Mammals</h3>
+  <ul>
+    <li>
+      All <a href="/wiki/Feliformia">feliforms</a>, such as domestic cats, big cats, hyenas, mongooses, civets
+    </li>
+    <li>
+      Almost all <a href="/wiki/Caniformia">caniforms</a>, such as the dogs, wolves, foxes, ferrets, seals and walruses
+    </li>
+    <li>
+      All cetaceans, such as dolphins, whales and porpoises
+    </li>
+    <li>
+      All bats except fruitbats
+    </li>
+    <li>
+      The carnivorous marsupials, such as the Tasmania devil
+    </li>
+  </ul>
+
+  <h3>Birds</h3>
+  <ul>
+    <li>
+      All birds of prey, such as hawks, eagles, falcons and owls
+    </li>
+    <li>
+      All vultures, both old world and new
+    </li>
+    <li>
+      Most waterfowl, such as gulls, penguins, pelicans, storks, and herons
+    </li>
+  </ul>
+  <p><a href="/wiki/Talk:Carnivore">Talk</a></p>
+</body>
+
+</html>
+|}
+  in
+  List.iter ~f:(fun s -> print_endline s) (get_bolded_text contents);
+  [%expect
+    {| 
+    carnivore
+    Predators
+    Scavengers
+    insectivores
+    piscivores |}]
 ;;
 
 (* [make_command ~summary ~f] is a helper function that builds a simple HTML parsing
