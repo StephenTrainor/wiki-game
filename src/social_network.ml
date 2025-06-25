@@ -34,10 +34,32 @@ module Network = struct
              consider the connection between b and a. *)
           [ a, b; b, a ]
         | None ->
-          printf "ERROR: Could not parse line as connection; dropping. %s\n" s;
+          printf
+            "ERROR: Could not parse line as connection; dropping. %s\n"
+            s;
           [])
     in
     Connection.Set.of_list connections
+  ;;
+
+  let is_a_neighbor
+        (person_to_check : Person.t)
+        (potential_pair : Person.t * Person.t)
+    : bool
+    =
+    let person_1, person_2 = potential_pair in
+    if
+      String.equal person_to_check person_1
+      || String.equal person_to_check person_2
+    then true
+    else false
+  ;;
+
+  let neighbors_of_person (network : t) (person : Person.t) : Person.t list =
+    List.filter (Set.to_list network) ~f:(is_a_neighbor person)
+    |> List.map ~f:(fun pair ->
+      let person_1, person_2 = pair in
+      if String.equal person_1 person then person_2 else person_1)
   ;;
 end
 
@@ -91,8 +113,8 @@ let visualize_command =
   let open Command.Let_syntax in
   Command.basic
     ~summary:
-      "parse a file listing friendships and generate a graph visualizing the social \
-       network"
+      "parse a file listing friendships and generate a graph visualizing \
+       the social network"
     [%map_open
       let input_file =
         flag
@@ -112,16 +134,77 @@ let visualize_command =
           (* [G.add_edge] auomatically adds the endpoints as vertices in the graph if
              they don't already exist. *)
           G.add_edge graph person1 person2);
-        Dot.output_graph (Out_channel.create (File_path.to_string output_file)) graph;
+        Dot.output_graph
+          (Out_channel.create (File_path.to_string output_file))
+          graph;
         printf !"Done! Wrote dot file to %{File_path}\n%!" output_file]
+;;
+
+let filter_then_enqueue (neighbors : string list) visited friend_queue : unit
+  =
+  List.filter neighbors ~f:(fun neighbor ->
+    not (Hash_set.mem visited neighbor))
+  |> List.iter ~f:(Queue.enqueue friend_queue)
 ;;
 
 (* [find_friend_group network ~person] returns a list of all people who are mutually
    connected to the provided [person] in the provided [network]. *)
-let find_friend_group network ~person : Person.t list =
-  ignore (network : Network.t);
-  ignore (person : Person.t);
-  failwith "TODO"
+let find_friend_group (network : Network.t) ~(person : Person.t)
+  : Person.t list
+  =
+  let visited = Person.Hash_set.create () in
+  let friend_queue = Queue.create () in
+  Queue.enqueue friend_queue person;
+  let rec traverse () =
+    match Queue.dequeue friend_queue with
+    | None -> ()
+    | Some friend ->
+      if not (Hash_set.mem visited friend)
+      then (
+        Hash_set.add visited friend;
+        let neighbors = Network.neighbors_of_person network friend in
+        filter_then_enqueue neighbors visited friend_queue);
+      traverse ()
+  in
+  traverse ();
+  Hash_set.to_list visited
+;;
+
+let%expect_test "find_friend_group" =
+  let contents =
+    [ "alpha", "bravo"
+    ; "bravo", "charlie"
+    ; "delta", "alpha"
+    ; "echo", "foxtrot"
+    ; "bravo", "foxtrot"
+    ; "delta", "golf"
+    ; "hotel", "india"
+    ; "golf", "hotel"
+    ; "golf", "india"
+    ; "juliet", "romeo"
+    ; "delta", "india"
+    ; "kilo", "foxtrot"
+    ; "foxtrot", "lima"
+    ]
+  in
+  List.iter
+    (find_friend_group
+       (Network.Connection.Set.of_list contents)
+       ~person:"alpha")
+    ~f:print_endline;
+  [%expect
+    {|
+    bravo
+    echo
+    delta
+    lima
+    india
+    foxtrot
+    golf
+    kilo
+    hotel
+    charlie
+    alpha|}]
 ;;
 
 let find_friend_group_command =
@@ -142,7 +225,9 @@ let find_friend_group_command =
       in
       fun () ->
         let network = Network.of_file input_file in
-        let friends = find_friend_group network ~person in
+        let friends =
+          find_friend_group network ~person:(Person.of_string person)
+        in
         List.iter friends ~f:print_endline]
 ;;
 
