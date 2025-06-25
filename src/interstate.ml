@@ -3,19 +3,22 @@ open! Core
 module My_graph = struct
   module Edge = struct
     module T = struct
-      type t = string * string [@@deriving compare, sexp]
+      type t = string * string * string [@@deriving compare, sexp]
     end
 
     include Comparable.Make (T)
 
     let of_string s =
-      let people_along_interstate = List.drop (String.split ~on:',' s) 1 in
+      let all_values = String.split ~on:',' s in
+      let interstate = String.concat (List.take all_values 1) ~sep:"" in
+      let people_along_interstate = List.drop all_values 1 in
       let rec inner_loop (from_city : string) (l : string list) =
         match l with
         | [] -> []
-        | head :: tail -> (from_city, head) :: inner_loop from_city tail
+        | head :: tail ->
+          (from_city, interstate, head) :: inner_loop from_city tail
       in
-      let rec outer_loop (l : string list) : (string * string) list =
+      let rec outer_loop (l : string list) : (string * string * string) list =
         match l with
         | [] -> []
         | head :: tail ->
@@ -36,7 +39,13 @@ module My_graph = struct
   ;;
 end
 
-module G = Graph.Imperative.Graph.Concrete (String)
+module Highway_name = struct
+  include String
+
+  let default = ""
+end
+
+module G = Graph.Imperative.Graph.ConcreteLabeled (String) (Highway_name)
 
 (* We extend our [Graph] structure with the [Dot] API so that we can easily render
    constructed graphs. Documentation about this API can be found here:
@@ -44,11 +53,11 @@ module G = Graph.Imperative.Graph.Concrete (String)
 module Dot = Graph.Graphviz.Dot (struct
     include G
 
-    let edge_attributes _ = [ `Dir `None ]
+    let edge_attributes e = [ `Dir `None; `Label (snd3 e) ]
     let default_edge_attributes _ = []
     let get_subgraph _ = None
     let vertex_attributes v = [ `Shape `Box; `Label v; `Fillcolor 1000 ]
-    let vertex_name v = v
+    let vertex_name v = Printf.sprintf "\"%s\"" v
     let default_vertex_attributes _ = []
     let graph_attributes _ = []
   end)
@@ -68,13 +77,6 @@ let load_command =
       fun () ->
         let graph = My_graph.of_file input_file in
         printf !"%{sexp: My_graph.t}\n" graph]
-;;
-
-let clean_up_periods str =
-  String.split ~on:'.' str
-  |> String.concat ~sep:"_"
-  |> String.split ~on:' '
-  |> String.concat ~sep:"_"
 ;;
 
 let visualize_command =
@@ -100,8 +102,7 @@ let visualize_command =
       fun () ->
         let my_graph = My_graph.of_file input_file in
         let g = G.create () in
-        Set.iter my_graph ~f:(fun (place_1, place_2) ->
-          G.add_edge g (clean_up_periods place_1) (clean_up_periods place_2));
+        Set.iter my_graph ~f:(fun triplet -> G.add_edge_e g triplet);
         Dot.output_graph
           (Out_channel.create (File_path.to_string output_file))
           g;
