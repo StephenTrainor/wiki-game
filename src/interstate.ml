@@ -96,9 +96,6 @@ let visualize_command =
         let my_graph = My_graph.of_file input_file in
         let g = G.create () in
         Set.iter my_graph ~f:(fun (place_1, place_2) ->
-          (* let place_1_wrapped = Printf.sprintf "\'%s\'" place_1 in *)
-          (* let place_2_wrapped = Printf.sprintf "%s" place_2 in *)
-          (* G.add_edge g place_1 place_2); *)
           G.add_edge g (clean_up_periods place_1) (clean_up_periods place_2));
         Dot.output_graph
           (Out_channel.create (File_path.to_string output_file))
