@@ -10,13 +10,25 @@ module My_graph = struct
 
     let of_string s =
       let people_along_interstate = List.drop (String.split ~on:',' s) 1 in
-      let rec loop l : (string * string) list =
+      (* let rec loop l : (string * string) list =
         match l with
         | place_1 :: place_2 :: tail ->
           (place_1, place_2) :: loop (place_2 :: tail)
         | _ -> []
+      in *)
+      (* loop people_along_interstate *)
+      let rec inner_loop (from_city : string) (l : string list) =
+        match l with
+        | [] -> []
+        | head :: tail -> (from_city, head) :: inner_loop from_city tail
       in
-      loop people_along_interstate
+      let rec outer_loop (l : string list) : (string * string) list =
+        match l with
+        | [] -> []
+        | head :: tail ->
+          List.append (outer_loop tail) (inner_loop head tail)
+      in
+      outer_loop people_along_interstate
     ;;
   end
 
