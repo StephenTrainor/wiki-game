@@ -1,5 +1,14 @@
 open! Core
 
+(* module Wiki_graph = struct
+   type t = String.Hash_set.t String.Map.t (* keys are strings, values are Hash_sets *)
+
+   let create () : t =
+   Map.empty (module )
+
+   let
+   end *)
+
 let endara_html_source =
   {|
 <!DOCTYPE html>
@@ -812,17 +821,96 @@ let print_links_command =
         List.iter (get_linked_articles contents) ~f:print_endline]
 ;;
 
+module G = Graph.Imperative.Graph.Concrete (String)
+
+module Dot = Graph.Graphviz.Dot (struct
+    include G
+
+    let edge_attributes _ = [ `Dir `Forward ]
+    let default_edge_attributes _ = []
+    let get_subgraph _ = None
+    let vertex_attributes v = [ `Shape `Box; `Label v; `Fillcolor 1000 ]
+    let vertex_name v = Printf.sprintf "\"%s\"" v
+    let default_vertex_attributes _ = []
+    let graph_attributes _ = []
+  end)
+
+let get_html_as_string url how_to_fetch : string =
+  File_fetcher.fetch_exn how_to_fetch ~resource:url
+;;
+
+let get_title contents : string =
+  let open Soup in
+  parse contents $ "title" |> R.leaf_text
+;;
+
+let enqueue_new_neighbor ~visited ~to_visit neighbor : unit =
+  if not (Hash_set.mem visited neighbor) then Queue.enqueue to_visit neighbor
+;;
+
+(* don't check for existence because we want to add as many edges as possible but we will not enqueue visited nodes in the enqueue_new_neighbor function *)
+let add_new_edges ~graph ~html_contents ~how_to_fetch outgoing_link : unit =
+  let neighbor_title =
+    get_html_as_string outgoing_link how_to_fetch |> get_title
+  in
+  let source_title = get_title html_contents in
+  G.add_edge graph source_title neighbor_title
+;;
+
+(* enqueue-ing an empty string represents an invalid link, which can act as a delimeter to detect a new frontier *)
+let filter_and_enqueue
+      ~(graph : G.t)
+      ~(html_contents : string)
+      ~(outgoing_links : string list)
+      ~(visited : File_fetcher.Resource.Hash_set.t)
+      ~(to_visit : string Base.Queue.t)
+      ~(how_to_fetch : File_fetcher.How_to_fetch.t)
+  : unit
+  =
+  List.iter outgoing_links ~f:(fun outgoing_link ->
+    add_new_edges ~graph ~html_contents ~how_to_fetch outgoing_link;
+    enqueue_new_neighbor ~visited ~to_visit outgoing_link);
+  Queue.enqueue to_visit ""
+;;
+
 (* [visualize] should explore all linked articles up to a distance of [max_depth] away
    from the given [origin] article, and output the result as a DOT file. It should use the
    [how_to_fetch] argument along with [File_fetcher] to fetch the articles so that the
    implementation can be tested locally on the small dataset in the ../resources/wiki
    directory. *)
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
-  ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (output_file : File_path.t);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  let current_depth : int ref = ref 0 in
+  let visited = String.Hash_set.create () in
+  let to_visit = Queue.create () in
+  let graph = G.create () in
+  Queue.enqueue to_visit origin;
+  Queue.enqueue to_visit "";
+  let rec traverse_neighbors () =
+    match Queue.dequeue to_visit with
+    | None -> ()
+    | Some url_to_visit ->
+      if String.equal url_to_visit ""
+      then incr current_depth
+      else if not (Hash_set.mem visited url_to_visit)
+      then
+        if current_depth.contents <= max_depth
+        then (
+          Hash_set.add visited url_to_visit;
+          let html_contents = get_html_as_string url_to_visit how_to_fetch in
+          let outgoing_links = get_linked_articles html_contents in
+          filter_and_enqueue
+            ~graph
+            ~html_contents
+            ~outgoing_links
+            ~visited
+            ~to_visit
+            ~how_to_fetch);
+      traverse_neighbors ()
+  in
+  traverse_neighbors ();
+  Dot.output_graph
+    (Out_channel.create (File_path.to_string output_file))
+    graph
 ;;
 
 let visualize_command =
