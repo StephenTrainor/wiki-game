@@ -57,9 +57,9 @@ module Maze = struct
       for x = 0 to t.maze_width - 1 do
         printf
           (match get_from_x_y t x y with
-           | WALL -> "= "
-           | OPEN_SPACE -> "  "
-           | START | END | IN_SOLUTION_PATH -> ". ")
+           | WALL -> "# "
+           | OPEN_SPACE -> ". "
+           | START | END | IN_SOLUTION_PATH -> "x ")
       done;
       print_endline ""
     done
