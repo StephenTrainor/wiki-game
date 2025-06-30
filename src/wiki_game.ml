@@ -848,13 +848,29 @@ let enqueue_new_neighbor ~visited ~to_visit neighbor : unit =
   if not (Hash_set.mem visited neighbor) then Queue.enqueue to_visit neighbor
 ;;
 
+let remove_wiki_prefix url =
+  String.substr_replace_first url ~pattern:"/wiki/" ~with_:""
+;;
+
+let url_to_title url =
+  remove_wiki_prefix url
+  |> String.substr_replace_first
+       ~pattern:"https://en.wikipedia.org"
+       ~with_:""
+;;
+
 (* don't check for existence because we want to add as many edges as possible but we will not enqueue visited nodes in the enqueue_new_neighbor function *)
 let add_new_edges ~graph ~html_contents ~how_to_fetch outgoing_link : unit =
-  let neighbor_title =
-    get_html_as_string outgoing_link how_to_fetch |> get_title
-  in
+  ignore how_to_fetch;
+  let neighbor_title = url_to_title outgoing_link in
   let source_title = get_title html_contents in
   G.add_edge graph source_title neighbor_title
+;;
+
+let fix_url_if_needed url how_to_fetch =
+  match (how_to_fetch : File_fetcher.How_to_fetch.t) with
+  | Local _ -> url
+  | Remote -> Printf.sprintf "https://en.wikipedia.org%s" url
 ;;
 
 (* enqueue-ing an empty string represents an invalid link, which can act as a delimeter to detect a new frontier *)
@@ -868,8 +884,15 @@ let filter_and_enqueue
   : unit
   =
   List.iter outgoing_links ~f:(fun outgoing_link ->
-    add_new_edges ~graph ~html_contents ~how_to_fetch outgoing_link;
-    enqueue_new_neighbor ~visited ~to_visit outgoing_link);
+    let formatted_link = fix_url_if_needed outgoing_link how_to_fetch in
+    (* if not (Hash_set.mem visited formatted_link) *)
+    (* then ( *)
+    add_new_edges
+      ~graph
+      ~html_contents
+      ~how_to_fetch
+      (remove_wiki_prefix outgoing_link);
+    enqueue_new_neighbor ~visited ~to_visit formatted_link);
   Queue.enqueue to_visit ""
 ;;
 
@@ -881,6 +904,7 @@ let filter_and_enqueue
 let visualize ?(max_depth = 3) ~origin ~output_file ~how_to_fetch () : unit =
   let current_depth : int ref = ref 0 in
   let visited = String.Hash_set.create () in
+  (* let visited = Hash_set.create (module String) in *)
   let to_visit = Queue.create () in
   let graph = G.create () in
   Queue.enqueue to_visit origin;
@@ -925,7 +949,7 @@ let visualize_command =
       and max_depth =
         flag
           "max-depth"
-          (optional_with_default 10 int)
+          (optional_with_default 2 int)
           ~doc:"INT maximum length of path to search for (default 10)"
       and output_file =
         flag
@@ -947,11 +971,38 @@ let visualize_command =
 
    [max_depth] is useful to limit the time the program spends exploring the graph. *)
 let find_path ?(max_depth = 3) ~origin ~destination ~how_to_fetch () =
-  ignore (max_depth : int);
-  ignore (origin : string);
-  ignore (destination : string);
-  ignore (how_to_fetch : File_fetcher.How_to_fetch.t);
-  failwith "TODO"
+  let current_depth : int ref = ref 0 in
+  let visited = String.Hash_set.create () in
+  (* let visited = Hash_set.create (module String) in *)
+  let to_visit = Queue.create () in
+  let graph = G.create () in
+  Queue.enqueue to_visit origin;
+  Queue.enqueue to_visit "";
+  let rec traverse_neighbors () =
+    match Queue.dequeue to_visit with
+    | None -> ()
+    | Some url_to_visit ->
+      if String.equal url_to_visit ""
+      then incr current_depth
+      else if not (Hash_set.mem visited url_to_visit)
+      then
+        if current_depth.contents <= max_depth
+        then (
+          Hash_set.add visited url_to_visit;
+          let html_contents = get_html_as_string url_to_visit how_to_fetch in
+          let outgoing_links = get_linked_articles html_contents in
+          filter_and_enqueue
+            ~graph
+            ~html_contents
+            ~outgoing_links
+            ~visited
+            ~to_visit
+            ~how_to_fetch);
+      traverse_neighbors ()
+  in
+  traverse_neighbors ();
+  ignore destination;
+  None
 ;;
 
 let find_path_command =
@@ -968,7 +1019,7 @@ let find_path_command =
       and max_depth =
         flag
           "max-depth"
-          (optional_with_default 10 int)
+          (optional_with_default 3 int)
           ~doc:"INT maximum length of path to search for (default 10)"
       in
       fun () ->
